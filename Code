@@ -1,4 +1,8 @@
-#Librerías
+Código de RMarkDown:
+
+librerias:
+
+```{r, warning=FALSE}
 library(readxl)
 library (dplyr)
 library(writexl)
@@ -26,104 +30,492 @@ library(pROC)
 library(VGAM)
 library(fastDummies)
 
-#Código de relación de tablas e imputación de variables
+```
+Cargo las bases de datos:
+
+```{r}
+zpm008 <- read_excel("ZPM008.XLSX",sheet = 1)#
+iw29 <- read_excel("AVISOS DESDE 2020 DE EQUIPOS E y S.XLSX",sheet=1)#
+iw39 <- read_excel("ORDENES DESDE 2020 DE EQUIPOS E y S.XLSX",sheet = 1)#
+iw49 <- read_excel("NOTIFICACIONES DESDE 2020 DE EQUIPOS E y S.XLSX",sheet = 1)#
+ih08 <- read_excel("IH08 EQUIPOS S Y E TODO ODL.XLSX", sheet = 1)
+IW69 <- read_excel("IW698 TODO.XLSX",sheet = 1)#
+```
+
+
+uno las tablas:
+
+```{r}
+#Agrupo por ordenes y sumo las HH plan y real
 grupiw49 <- iw49 %>% group_by(Orden) %>% summarise("Trabajo.Plan"=sum(Trabajo), "Trabajo.Real"=sum(`Trabajo real`))
+```
+
+
+
+Todos los NA de las HH de trabajo plan y real se pasan a cero, por tanto, las ordenes que no esten dentro de la descarga de la iw49n tomarÃ¡n este valor.
+
+```{r}
 iw39 <- left_join(iw39,grupiw49,relationship="one-to-one")
 iw39$Trabajo.Plan[is.na(iw39$Trabajo.Plan)] <- 0
 iw39$Trabajo.Real[is.na(iw39$Trabajo.Real)] <- 0
+```
+
+
+```{r, warning=FALSE}
+#Amplio la IW39 para incluir todos aquellos equipos que se encuentran dentro de la lista de objetos y traer el estatus actual del plan de mantenimiento
 siw39 <- left_join(x=iw39, y=zpm008[,c(2,5,6)],join_by("Posición mantenim." == "Posición"))
+
+```
+
+
+```{r}
 siw39$Equipo.Selec[is.na(siw39$Equipo.Selec)] <- siw39$Equipo
 siw39 <- siw39[,-14]
+
+```
+
+
+```{r}
+#Selecciono las variables
 IW69 <- IW69[,c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,23,24,25,26,27)]
+```
+
+
+Con la siguiente union, traigo en una sola tabla los avisos con todas sus posiciones y registros de falla
+
+```{r}
+#Uno la base de datos IW69 a la de IW29
 siw2969 <- left_join(x=iw29,y=IW69,join_by("Aviso"=="Aviso"))
+
+```
+
+```{r}
 siw39iw29 <- left_join(x=siw39,y=siw2969 ,join_by("Orden"=="Orden"))
+```
+
+Elimino registros duplicados de la tabla anterior:
+
+```{r}
 base <- distinct(siw39iw29)
+```
+# AJUSTE DE VARIABLES
+
+```{r}
 base <- base[,c(-10,-29,-32)]
+```
+
+
+```{r}
+names(base)
+```
+
+```{r}
+colnames(base)[c(6,15,16,17,29,40,49,50,52,55,56,25,27,37,38,41,42,43,44,45,46,47,48,51,53,49,50,24)] <- c("Status.Sistema.Orden","Criticidad.Orden","Ubic.Tecnica.Orden","Emplaz.Orden","Criticidad.Aviso","Status.Sistema.Aviso","Grupo.Causas","Causa","Grupo.MetodDetec","Metod Detec Selec","Metodo.Detec","Aviso","Descrip.Aviso","Fecha.Crea.Aviso","Fecha.Cierre.Aviso","Cod.Grupo.ParteObjeto","Nombre.Grupo.ParteObjeto","Parte.Objeto","Cod.Grupo.ModoFalla","Nombre.Grupo.ModoFalla","Cod.ModoFalla","Nombre.ModoFalla","TextoLibre.ModoFalla","TextoLibre.CausaFalla","Cod.Grupo.CausaFalla","Nombre.Grupo.CausaFalla","Causa.Falla","PM.Activo") 
+```
+
+```{r}
+base <- base[,c(-27,-30,-33,-34,-35,-36)]
+```
+
+```{r}
+colnames(base)[c(3,4,5,8,9,10,11,12,13,14,18,19,20,26,27,33,49)] <- c("Fecha.Entrada","Fecha.Liberacion","Fecha.FinExtrema","Fecha.Real.Fin.Orden","Plan.Mtto.Pvo","Clase.Orden","TextoBreve.Orden","Nombre.UT.Orden","Nombre.Equipo.Orden","Status.Usuario.Orden","Posic.Mtto","Costo.Real","Costo.Plan","Fecha.Aviso","Centro.Emplaz.Aviso","Perfil.Catalogo","Metodo.Deteccion")
+```
+
+```{r}
+base <- base[,c(-46,-48,-50)]
+```
+
+```{r}
+base <- base[,c(-48,-49,-50)]
+```
+
+```{r}
+base <- base[,-48]
+```
+
+```{r}
+names(base)
+```
+
+Traigo la criticidad del equipo:
+
+```{r}
+#Uno la base de datos base y la ih08
 base <- left_join(x=base,y=ih08[,c("Equipo","Indicador ABC")],join_by("Equipo.Selec"=="Equipo"))
 colnames(base)[48] <- "Criticidad.Equipo"
+```
+
+```{r}
+#Seleccion de variables del trabajo
+
+base_selec <- base %>% select(Orden,Fecha.Entrada,Fecha.Liberacion,Fecha.FinExtrema,Clase.Orden,Nombre.UT.Orden,
+                              Nombre.Equipo.Orden,Criticidad.Orden,Costo.Real,Costo.Plan,Trabajo.Plan,Trabajo.Real,
+                              Equipo.Selec,PM.Activo,Criticidad.Aviso,Parada,Fecha.Crea.Aviso,Fecha.Cierre.Aviso,
+                              Perfil.Catalogo,Cod.Grupo.ParteObjeto,Cod.Grupo.ModoFalla,Criticidad.Equipo)
+
+```
+Se cambia el tipo de datos:
+
+```{r}
+base_anonim[,c(1,12,16,17)] <- apply(base_anonim[,c(1,12,16,17)],2, FUN = as.character)
+```
+
+Se saca la demora en liberar:
+
+```{r}
 base_anonim$Demora.Liberar <- as.numeric(difftime(base_anonim$Fecha.Liberacion, base_anonim$Fecha.Entrada, units = "days"))
+```
+
+Se saca la demora para finalizar:
+
+```{r}
 base_anonim$Demora.Finalizar <- as.numeric(difftime(base_anonim$Fecha.FinExtrema,base_anonim$Fecha.Liberacion, units = "days"))
+
 base_anonim$Demora.Finalizar <- ifelse(base_anonim$Demora.Finalizar<0,NA,base_anonim$Demora.Finalizar)
+```
+Se imputa la variable PM.Activo:
+
+```{r}
+
 base_anonim$PM.Activo <- ifelse(is.na(base_anonim$PM.Activo),"NO",base_anonim$PM.Activo)
+
+```
+
+Se imputa la variable "Parada":
+
+```{r}
+
 base_anonim$Parada <- ifelse(is.na(base_anonim$Parada),"NO",base_anonim$Parada)
 
-#Código de exploración de variables
-corrplot(cor(cuanti_sinNA),type = c("upper"), method = c("square"),diag = F, addCoef.col = "#030303",number.cex = 1, cl.cex = 0.7, tl.cex=0.7, tl.srt=45, mar=c(1,1,1,1), title = "Correlacion Variables Cuantitativas")
+```
+############ EXPLORACION DE DATOS ###########################
+
+Se agrupan las variables cualitativas y cuantitativas:
+
+```{r}
+
+
+
+cualitativas <- base_anonim %>% select("Clase.Orden","Nombre.UT.Orden","Criticidad.Orden","PM.Activo",
+                                       "Parada","Perfil.Catalogo","Cod.Grupo.ParteObjeto",
+                                       "Cod.Grupo.ModoFalla", "Criticidad.Equipo","Impacto")
+cuantitativas <- base_anonim %>% select("Costo.Real","Costo.Plan","Trabajo.Plan","Trabajo.Real",
+                                        "Demora.Liberar","Demora.Finalizar")
+v.tiempo <- base_anonim %>% select("Fecha.Entrada","Fecha.Liberacion","Fecha.FinExtrema")
+
+
+cuanti_sinNA <- na.omit(cuantitativas)
+
+
+```
+
+
+```{r}
+corrplot(cor(cuanti_sinNA),type = c("upper"), method = c("square"),diag = F, addCoef.col = "#030303",
+         number.cex = 1, cl.cex = 0.7, tl.cex=0.7, tl.srt=45, mar=c(1,1,1,1),
+         title = "Correlacion Variables Cuantitativas")
+```
+
+```{r}
+library(gclus)
 cuant <- base_anonim[,c(8,9,10,11,19,20)]
+
 corr <- abs(cor(cuant)) 
+
 colors <- dmat.color(corr)
-cpairs(cuant,                    
-       panel.colors = colors,   
-       border.color = "grey70", 
-       gap = 0.45,              
+
+
+cpairs(cuant,                    # Data frame
+       panel.colors = colors,   # Matriz de colores
+       border.color = "grey70", # Color de los bordes
+       gap = 0.45,              # Distancia entre subplots
        main = "Variables ordenadas coloreadas por correlación", # Título principal
-       show.points = TRUE,      
-       pch = 21,                
-       bg = rainbow(1)[base_anonim$Impacto]) 
-costo_real_serie <- base_anonim %>% select("Costo.Real","Fecha.FinExtrema")
-ggplot(costo_real_serie, aes(x = Fecha.FinExtrema, y = Costo.Real)) +
-  geom_line(color = "blue") +
-  labs(x = "Fecha", y = "Valor", title = "Serie de Tiempo Costo Real Vs Fin Extrema")
-trabajo_real_serie <- base_anonim %>% select("Trabajo.Real","Fecha.FinExtrema")
-ggplot(trabajo_real_serie, aes(x = Fecha.FinExtrema, y = Trabajo.Real)) +
-  geom_line(color = "blue") +
-  labs(x = "Fecha", y = "Valor", title = "Serie de Tiempo Trabajo Real Vs Fin Extrema")
-demora_finalizar_serie <- base_anonim %>% select("Demora.Finalizar","Fecha.FinExtrema")
-ggplot(demora_finalizar_serie, aes(x = Fecha.FinExtrema, y = Demora.Finalizar)) +
-  geom_line(color = "blue") +
-  labs(x = "Fecha", y = "Valor", title = "Serie de Tiempo Demora Finalizar Vs Fin Extrema")
-demora_liberar_serie <- base_anonim %>% select("Demora.Liberar","Fecha.FinExtrema")
-ggplot(demora_liberar_serie, aes(x = Fecha.FinExtrema, y = Demora.Liberar)) +
-  geom_line(color = "blue") +
-  labs(x = "Fecha", y = "Valor", title = "Serie de Tiempo Demora Liberar Vs Fin Extrema")
+       show.points = TRUE,      # Si FALSE, elimina todos los puntos
+       pch = 21,                # Símbolo pch
+       bg = rainbow(1)[base_anonim$Impacto]) # Colores por grupo
+```
+
+comportamiento del costo real de la orden por clase de orden:
+
+```{r}
 c.real <- Winsorize(base_anonim$Costo.Real,probs=c(0.05,0.95))
 costo_tipomtto <- cbind.data.frame(Clase.Orden=base_anonim$Clase.Orden,c.real)
-A <- costo_tipomtto %>% ggplot(aes(as.numeric(c.real))) +  geom_histogram(data = subset(costo_tipomtto, Clase.Orden=="PVO"),fill="red", colour= "black")+  labs(x="Costo Preventivo",y="Frecuencia") +  ylim(c(0,3500))+  ggtitle("Costo Real de Preventivo")
+
+A <- costo_tipomtto %>% ggplot(aes(as.numeric(c.real))) + 
+  geom_histogram(data = subset(costo_tipomtto, Clase.Orden=="PVO"),fill="red", colour= "black")+
+  labs(x="Costo Preventivo",y="Frecuencia") +
+  ylim(c(0,3500))+
+  ggtitle("Costo Real de Preventivo")
+
+
 B <- costo_tipomtto %>% ggplot(aes(as.numeric(c.real))) + 
-  geom_histogram(data = subset(costo_tipomtto, Clase.Orden=="CVO"),fill="blue", colour= "black") +  labs(x="Costo Correctivo",y="Frecuencia") +  ylim(c(0,3500))+  ggtitle("Costo Real de Correctivo")
+  geom_histogram(data = subset(costo_tipomtto, Clase.Orden=="CVO"),fill="blue", colour= "black") +
+  labs(x="Costo Correctivo",y="Frecuencia") +
+  ylim(c(0,3500))+
+  ggtitle("Costo Real de Correctivo")
+
 plot_grid(A,B)
+
+```
+
+
+```{r}
+
 costo_Criticidad <- cbind.data.frame(Criticidad=base_anonim$Criticidad.Orden,c.real)
 
-A <- costo_Criticidad %>% ggplot(aes(as.numeric(c.real))) +   geom_histogram(data = subset(costo_Criticidad, Criticidad=="No Critico"),fill="red", colour= "black")+  labs(x="Costo No Critico",y="Frecuencia") +  ylim(c(0,2000))+  ggtitle("Costo Real de No Critico")
-B <- costo_Criticidad %>% ggplot(aes(as.numeric(c.real))) +   geom_histogram(data = subset(costo_Criticidad, Criticidad=="Critico"),fill="blue", colour= "black") +  labs(x="Costo Critico",y="Frecuencia") +  ylim(c(0,2000))+  ggtitle("Costo Real de Critico")
-plot_grid(A,B)
-costo_PMactivo <- cbind.data.frame(PM.Activo=base_anonim$PM.Activo,c.real)
-A <- costo_PMactivo %>% ggplot(aes(as.numeric(c.real))) +   geom_histogram(data = subset(costo_PMactivo, PM.Activo=="NO"),fill="red", colour= "black")+  labs(x="Costo PM No Activo",y="Frecuencia") +  ylim(c(0,2000))+  ggtitle("Costo Real con PM No Activo")
-B <- costo_PMactivo %>% ggplot(aes(as.numeric(c.real))) +   geom_histogram(data = subset(costo_PMactivo, PM.Activo=="SI"),fill="blue", colour= "black") +  labs(x="Costo PM Activo",y="Frecuencia") +  ylim(c(0,2000))+  ggtitle("Costo Real con PM Activo")
-plot_grid(A,B)
-tab_imp <- data.frame(table(base_anonim$Impacto
-grafico <- ggplot(tab_imp, aes(x = tab_imp$Var1, y = tab_imp$Freq)) +
-  geom_bar(stat = "identity", fill = "slateblue4") +  
-  labs(title = "Mantenimientos por Nivel de Impacto", x = "Impacto", y = "Cantidad")  
-print(grafico)
-CrossTable(x=base_anonim$Clase.Orden, y=base_anonim$Impacto, digits = 2 )
-CrossTable(x=base_anonim$Nombre.UT.Orden, y=base_anonim$Impacto, digits = 2 )
-CrossTable(x=base_anonim$PM.Activo, y=base_anonim$Impacto, digits = 2 )
-CrossTable(x=base_anonim$Parada, y=base_anonim$Impacto, digits = 2 )
+A <- costo_Criticidad %>% ggplot(aes(as.numeric(c.real))) + 
+  geom_histogram(data = subset(costo_Criticidad, Criticidad=="No Critico"),fill="red", colour= "black")+
+  labs(x="Costo No Critico",y="Frecuencia") +
+  ylim(c(0,2000))+
+  ggtitle("Costo Real de No Critico")
 
-#Código para codificar variables categóricas y estandarizar variables cuantitativas
+
+B <- costo_Criticidad %>% ggplot(aes(as.numeric(c.real))) + 
+  geom_histogram(data = subset(costo_Criticidad, Criticidad=="Critico"),fill="blue", colour= "black") +
+  labs(x="Costo Critico",y="Frecuencia") +
+  ylim(c(0,2000))+
+  ggtitle("Costo Real de Critico")
+
+plot_grid(A,B)
+
+```
+
+
+```{r}
+
+costo_PMactivo <- cbind.data.frame(PM.Activo=base_anonim$PM.Activo,c.real)
+
+A <- costo_PMactivo %>% ggplot(aes(as.numeric(c.real))) + 
+  geom_histogram(data = subset(costo_PMactivo, PM.Activo=="NO"),fill="red", colour= "black")+
+  labs(x="Costo PM No Activo",y="Frecuencia") +
+  ylim(c(0,2000))+
+  ggtitle("Costo Real con PM No Activo")
+
+
+B <- costo_PMactivo %>% ggplot(aes(as.numeric(c.real))) + 
+  geom_histogram(data = subset(costo_PMactivo, PM.Activo=="SI"),fill="blue", colour= "black") +
+  labs(x="Costo PM Activo",y="Frecuencia") +
+  ylim(c(0,2000))+
+  ggtitle("Costo Real con PM Activo")
+
+plot_grid(A,B)
+
+```
+
+
+```{r}
+tab_imp <- data.frame(table(base_anonim$Impacto))
+
+# Crear el gráfico de barras
+grafico <- ggplot(tab_imp, aes(x = tab_imp$Var1, y = tab_imp$Freq)) +
+  geom_bar(stat = "identity", fill = "slateblue4") +  # Geometría de barras
+  labs(title = "Mantenimientos por Nivel de Impacto", x = "Impacto", y = "Cantidad")  # Agregar títulos y nombres de ejes
+
+# Imprimir el gráfico
+print(grafico)
+```
+
+
+
+
+1. Analisis y relacion entre impacto economico y otras variables
+
+
+*Analisis de correspondencias de las variables cualitativas respecto a la variable del impacto economico de las ordenes de mantenimiento.*
+
+```{r}
+
+CrossTable(x=base_anonim$Clase.Orden, y=base_anonim$Impacto, digits = 2 )
+```
+
+
+```{r}
+CrossTable(x=base_anonim$Nombre.UT.Orden, y=base_anonim$Impacto, digits = 2 )
+```
+
+
+```{r}
+CrossTable(x=base_anonim$Criticidad.Orden, y=base_anonim$Impacto, digits = 2 )
+```
+
+
+
+```{r}
+CrossTable(x=base_anonim$PM.Activo, y=base_anonim$Impacto, digits = 2 )
+```
+
+
+
+```{r}
+CrossTable(x=base_anonim$Parada, y=base_anonim$Impacto, digits = 2 )
+```
+
+
+```{r}
+cualitativas$Tipo.Equipo <- str_sub(cualitativas$Perfil.Catalogo,1,2)
+
+CrossTable(x=cualitativas$Tipo.Equipo, y=cualitativas$Impacto, digits = 2 )
+```
+
+```{r}
+#Se genera db con las variables a trabajar y se eliminan los registros con NA
+db <- cbind.data.frame(cualitativas[,c(-6,-7,-8)],cuantitativas)
+db <- na.omit(db)
+```
+
+```{r}
+#se sacan los dos estratos
+preventivo <- subset(db, db$Clase.Orden=="PVO")
+correctivo <- subset(db, db$Clase.Orden=="CVO")
+```
+
+```{r}
+#se generan los 4 subgrupos con aleatorio simple para cada estrato
+
+indices_pvo <- as.numeric(rownames(preventivo))
+set.seed(1)
+Apvo <- sample(indices_pvo, size=5799)
+indices_pvo <- indices_pvo[!indices_pvo %in% Apvo]
+Bpvo <- sample(indices_pvo, size=5799)
+indices_pvo <- indices_pvo[!indices_pvo %in% Bpvo]
+Cpvo <- sample(indices_pvo, size=5799)
+Dpvo <- indices_pvo[!indices_pvo %in% Cpvo]
+
+indices_cvo <- as.numeric(rownames(correctivo))
+set.seed(1)
+Acvo <- sample(indices_cvo, size=731)
+indices_cvo <- indices_cvo[!indices_cvo %in% Acvo]
+Bcvo <- sample(indices_cvo, size=731)
+indices_cvo <- indices_cvo[!indices_cvo %in% Bcvo]
+Ccvo <- sample(indices_cvo, size=731)
+Dcvo <- indices_cvo[!indices_cvo %in% Ccvo]
+
+```
+
+
+```{r}
+# Se arman los conjuntos A, B, C, D
+
+conjuntoA <- na.omit(rbind(db[Apvo,],db[Acvo,]))
+conjuntoB <- na.omit(rbind(db[Bpvo,],db[Bcvo,]))
+conjuntoC <- na.omit(rbind(db[Cpvo,],db[Ccvo,]))
+conjuntoD <- na.omit(rbind(db[Dpvo,],db[Dcvo,]))
+
+```
+
+Se crea una lista con 4 dataframes de entrenamiento:
+
+```{r}
+train1 <- rbind(conjuntoA,conjuntoB,conjuntoC)
+train1$Impacto <- as.factor(train1$Impacto)
+
+train2 <- rbind(conjuntoA, conjuntoB, conjuntoD)
+train2$Impacto <- as.factor(train2$Impacto)
+
+train3 <- rbind(conjuntoA, conjuntoC, conjuntoD)
+train3$Impacto <- as.factor(train3$Impacto)
+
+train4 <- rbind(conjuntoB, conjuntoC, conjuntoD)
+train4$Impacto <- as.factor(train4$Impacto)
+
+df_train <- list(train1, train2, train3, train4)
+
+```
+
+Se crea una lista con 4 vectores de prueba:
+
+```{r}
+test1 <- conjuntoD
+test2 <- conjuntoC
+test3 <- conjuntoB
+test4 <- conjuntoA
+
+test1$Impacto <- as.factor(test1$Impacto)
+test2$Impacto <- as.factor(test2$Impacto)
+test3$Impacto <- as.factor(test3$Impacto)
+test4$Impacto <- as.factor(test4$Impacto)
+
+df_test <- list(test1,test2,test3,test4)
+```
+
+```{r}
+#Se dejan solo las variables de interes
+
+#Cuali de 1 a 5, cuanti de 8 a 12, 7 es impacto y 8 es costo real cuantitativo
+
+bd_tot <- bd_tot[,c(-6,-8)]
+bd_sin_out <- bd_sin_out[,c(-6,-8)]
+```
+
+
+```{r}
 bd_tot$Impacto <- as.factor(bd_tot$Impacto)
 bd_tot$Impacto <- relevel(bd_tot$Impacto,ref="Bajo")
+
 bd_sin_out$Impacto <- as.factor(bd_sin_out$Impacto)
 bd_sin_out$Impacto <- relevel(bd_sin_out$Impacto,ref="Bajo")
+```
+
+
+```{r}
 # Función para normalizar Z-score
 normalize_z_score <- function(x) {
   return((x - mean(x)) / sd(x))
 }
+```
+
+
+
+```{r}
+
+
+
+#dataframes con todos los datos originales
+
+
 bd_tot_dum <- dummy_cols(bd_tot, select_columns = names(bd_tot[1:5]))
 bd_tot_dum[names(bd_tot_dum[8:12])] <- lapply(bd_tot_dum[names(bd_tot_dum[8:12])],normalize_z_score)
+
 bd_sin_out_dum <- dummy_cols(bd_sin_out, select_columns = names(bd_sin_out[1:5])) 
 bd_sin_out_dum[names(bd_sin_out_dum[8:12])] <- lapply(bd_sin_out_dum[names(bd_sin_out_dum[8:12])],normalize_z_score)
 
-#Código para segmentar los datos
+```
+
+```{r}
+#dataframe con el 75% de los datos para entrenar y elegir el modelo
+
+bd_sin_out_train <- bd_sin_out_dum[1:16146,]
+#bd_sin_out_train <- data.frame(bd_sin_out_train)
+
+bd_tot_train <- bd_tot_dum[1:17892,]
+#bd_tot_train <- data.frame(bd_tot_train)
+
+```
+
+
+
+#crear los 4 conjuntos de entrenamiento y prueba
+
+```{r}
 cvo <- subset.data.frame(bd_tot_dum, Clase.Orden=="CVO")
 pvo <- subset.data.frame(bd_tot_dum, Clase.Orden=="PVO")
+
+
 cvo_arbol <- subset.data.frame(bd_tot, Clase.Orden=="CVO")
 pvo_arbol <- subset.data.frame(bd_tot, Clase.Orden=="PVO")
+```
+
+
+```{r}
 particion_cvo <- createFolds(rownames(cvo), k=4)
 particion_pvo <- createFolds(rownames(pvo), k=4)
+
 particion_cvo_arbol <- createFolds(rownames(cvo_arbol), k=4)
 particion_pvo_arbol <- createFolds(rownames(pvo_arbol), k=4)
+```
+
+
+```{r}
 ind_cvo <- rownames(cvo)
 ind_pvo <- rownames(pvo)
 d_train <- list()
@@ -133,29 +525,41 @@ d_train[[1]] <-  rbind(pvo[particion_pvo[[2]],],
                       cvo[particion_cvo[[3]],],
                       pvo[particion_pvo[[4]],],
                       cvo[particion_cvo[[4]],])
+
 d_train[[2]] <-  rbind(pvo[particion_pvo[[3]],],
                       cvo[particion_cvo[[3]],],
                       pvo[particion_pvo[[4]],],
                       cvo[particion_cvo[[4]],],
                       pvo[particion_pvo[[1]],],
                       cvo[particion_cvo[[1]],])
+
 d_train[[3]] <-  rbind(pvo[particion_pvo[[4]],],
                       cvo[particion_cvo[[4]],],
                       pvo[particion_pvo[[1]],],
                       cvo[particion_cvo[[1]],],
                       pvo[particion_pvo[[2]],],
                       cvo[particion_cvo[[2]],])
+
 d_train[[4]] <-  rbind(pvo[particion_pvo[[1]],],
                       cvo[particion_cvo[[1]],],
                       pvo[particion_pvo[[2]],],
                       cvo[particion_cvo[[2]],],
                       pvo[particion_pvo[[3]],],
                       cvo[particion_cvo[[3]],])
+
+
 d_test <- list()
+
 for (i in 1:4) {
   d_test[[i]] <- rbind(pvo[particion_pvo[[i]],],
                       cvo[particion_cvo[[i]],])
 }
+
+
+```
+
+
+```{r}
 ind_cvo_arbol <- rownames(cvo_arbol)
 ind_pvo_arbol <- rownames(pvo_arbol)
 d_train_arbol <- list()
@@ -165,38 +569,80 @@ d_train_arbol[[1]] <-  rbind(pvo_arbol[particion_pvo_arbol[[2]],],
                       cvo_arbol[particion_cvo_arbol[[3]],],
                       pvo_arbol[particion_pvo_arbol[[4]],],
                       cvo_arbol[particion_cvo_arbol[[4]],])
+
 d_train_arbol[[2]] <-  rbind(pvo_arbol[particion_pvo_arbol[[3]],],
                       cvo_arbol[particion_cvo_arbol[[3]],],
                       pvo_arbol[particion_pvo_arbol[[4]],],
                       cvo_arbol[particion_cvo_arbol[[4]],],
                       pvo_arbol[particion_pvo_arbol[[1]],],
                       cvo_arbol[particion_cvo_arbol[[1]],])
+
 d_train_arbol[[3]] <-  rbind(pvo_arbol[particion_pvo_arbol[[4]],],
                       cvo_arbol[particion_cvo_arbol[[4]],],
                       pvo_arbol[particion_pvo_arbol[[1]],],
                       cvo_arbol[particion_cvo_arbol[[1]],],
                       pvo_arbol[particion_pvo_arbol[[2]],],
                       cvo_arbol[particion_cvo_arbol[[2]],])
+
 d_train_arbol[[4]] <-  rbind(pvo_arbol[particion_pvo_arbol[[1]],],
                       cvo_arbol[particion_cvo_arbol[[1]],],
                       pvo_arbol[particion_pvo_arbol[[2]],],
                       cvo_arbol[particion_cvo_arbol[[2]],],
                       pvo_arbol[particion_pvo_arbol[[3]],],
                       cvo_arbol[particion_cvo_arbol[[3]],])
+
+
 d_test_arbol <- list()
+
 for (i in 1:4) {
   d_test_arbol[[i]] <- rbind(pvo_arbol[particion_pvo_arbol[[i]],],
                       cvo_arbol[particion_cvo_arbol[[i]],])
 }
 
-#Código para modelamiento con árbol de decisión
+
+```
+
+
+
+
+```{r}
+d_train_arbol_unido <- rbind.data.frame(d_train_arbol[[1]],d_train_arbol[[2]],d_train_arbol[[3]],d_train_arbol[[4]])
+```
+
+
+
+Metodo de grilla para buscar hiperparametros optimos
+
+```{r}
 grid <- expand.grid(.cp = seq(0.01, 0.5, by = 0.01)) 
-modelo_arbol <- train(Impacto ~ Clase.Orden + Nombre.UT.Orden + Criticidad.Orden + PM.Activo +Parada + Costo.Plan + Trabajo.Plan + 
+
+modelo_arbol <- train(Impacto ~ Clase.Orden + Nombre.UT.Orden + Criticidad.Orden + PM.Activo +
+                                   Parada + Costo.Plan + Trabajo.Plan + 
                                    Trabajo.Real + Demora.Liberar + Demora.Finalizar, 
                       data = d_train_arbol[[1]], 
                       method = "rpart", 
                       trControl = trainControl(method = "cv"), 
                       tuneGrid = grid)
+
+
+
+```
+
+arbol final optimo:
+
+```{r}
+arbol_final<- modelo_arbol$finalModel
+
+
+arbol_final$cptable
+modelo_arbol$bestTune
+modelo_arbol$maximize
+
+```
+
+
+```{r}
+
 arbol <- rpart(formula = Impacto ~ Clase.Orden + Nombre.UT.Orden + Criticidad.Orden + PM.Activo +
                                Parada + Costo.Plan + Trabajo.Plan + 
                                Trabajo.Real + Demora.Liberar + Demora.Finalizar, 
@@ -204,45 +650,97 @@ arbol <- rpart(formula = Impacto ~ Clase.Orden + Nombre.UT.Orden + Criticidad.Or
                     control = rpart.control(minsplit = 20, cp =modelo_arbol$bestTune, maxdepth = 10), 
                     parms = list(split = "information"), 
                     method = "class") 
+
 arbol_podado<- prune(tree = arbol,
                       cp = arbol$cptable[which.min(
                         arbol$cptable[,"xerror"]),"CP"])
+```
+
+```{r}
+arbol_podado$cptable
+```
+```{r}
 printcp(arbol_podado)
+```
+
+
+
+arbol final:
+
+
+
+```{r}
 rpart.plot(x = arbol_podado,
-           type = 5,
+           type = 3,
            box.palette = "RdGn",
            extra = 2,
+           under=T,
            snip=T,
+           fallen.leaves=T,
+           #tweak=1.3,
+           clip.right.labs=T,
            main="Arbol de Clasificación",
-           cex=0.55)
+           cex=0.75) #cex=0.65
+```
+
+```{r}
+saveRDS(arbol_podado, file = "modelo_arbol.rds")
+```
+
+
+
+aplicacion de validacion cruzada para verificar overfitting o underfitting
+
+```{r}
 accuracy_arbol <- data.frame(Acc_Train=numeric(), Acc_Test=numeric())
+
 for (k in 1:4) {
   predict_arbol_train <- predict(object = arbol_podado,
                             newdata = d_train_arbol[[k]],
                             type = "class")
+
   predict_arbol_test <- predict(object = arbol_podado,
                             newdata = d_test_arbol[[k]],
                             type = "class")
+
   matriz_test_arbol <- confusionMatrix(predict_arbol_test,d_test_arbol[[k]][,6])
   matriz_train_arbol <- confusionMatrix(predict_arbol_train,d_train_arbol[[k]][,6])
+
   accuracy_arbol[k,1] <- matriz_train_arbol$overall[1]
   accuracy_arbol[k,2] <- matriz_test_arbol$overall[1]
 }
+
+```
+
+```{r}
+accuracy_arbol
+```
+
+
+#Evaluacion de medidas de desempeño con validacion cruzada
+
+
+```{r}
 accuracy_desem_arbol <- data.frame(Acc_Train=numeric(), Acc_Test=numeric())
 sensibi_desem_arbol <- data.frame(Sensitivity_Train=numeric(), Sensitivity_Test=numeric())
 specif_desem_arbol <- data.frame(Specificity_Train=numeric(), Specificity_Test=numeric())
 precision_desem_arbol <- data.frame(precision_Train=numeric(), precision_Test=numeric())
+
 for (k in 1:4) {
   predict_arbol_train <- predict(object = arbol_podado,
                             newdata = d_train_arbol[[k]],
                             type = "class")
+
   predict_arbol_test <- predict(object = arbol_podado,
                             newdata = d_test_arbol[[k]],
                             type = "class")
+
   matriz_test_arbol <- confusionMatrix(predict_arbol_test,d_test_arbol[[k]][,6])
   matriz_train_arbol <- confusionMatrix(predict_arbol_train,d_train_arbol[[k]][,6])
+
   accuracy_desem_arbol[k,1] <- matriz_train_arbol$overall[1]
   accuracy_desem_arbol[k,2] <- matriz_test_arbol$overall[1]
+  
   Atr <-  matriz_train_arbol$table[1,1]
   Btr <-  matriz_train_arbol$table[1,2]
   Ctr <-  matriz_train_arbol$table[2,1]
@@ -259,12 +757,29 @@ for (k in 1:4) {
   specif_desem_arbol[k,2] <- Dte/(Bte+Dte)
   precision_desem_arbol[k,2] <- Ate/(Ate+Bte)
 }
+
+```
+
+
+#Genrar ROC
+
+```{r}
 predicciones_prob_arbol <- data.frame(predict(object = arbol_podado,
                             newdata = rbind(d_test_arbol[[1]],d_test_arbol[[2]],d_test_arbol[[3]],d_test_arbol[[4]]),
                             type = "prob"))
 tipo_roc_arbol <- multiclass.roc(rbind(d_test_arbol[[1]],d_test_arbol[[2]],d_test_arbol[[3]],d_test_arbol[[4]])[,6], predicciones_prob_arbol)
+
+```
+
+
+
+
+
+
+```{r}
 d_test_unido_arbol <- rbind(d_test_arbol[[1]],d_test_arbol[[2]],d_test_arbol[[3]],d_test_arbol[[4]])
 obj <- d_test_unido_arbol[,6]
+
 predicciones_prob_arbol$obj <- obj
 r1_arbol <- roc(predicciones_prob_arbol$obj,predicciones_prob_arbol[,1],  percent=TRUE, ci=TRUE)
 r2_arbol <- roc(predicciones_prob_arbol$obj,predicciones_prob_arbol[,2],  percent=TRUE, ci=TRUE)
@@ -279,6 +794,7 @@ plot(r1_arbol,
      auc.polygon.col="gray90",
      identity=F, 
      grid=T)
+
 plot(r2_arbol, 
      col="darkred",
      auc.polygon=T,
@@ -287,6 +803,7 @@ plot(r2_arbol,
      identity=F, 
      grid=T,
      add=T)
+
 plot(r3_arbol, 
      col="yellow",
      auc.polygon=T,
@@ -295,6 +812,7 @@ plot(r3_arbol,
      identity=F, 
      grid=T,
      add=T)
+
 plot(r4_arbol, 
      col="cyan",
      auc.polygon=T,
@@ -303,14 +821,40 @@ plot(r4_arbol,
      identity=F, 
      grid=T,
      add=T)
-legend("bottomright", legend=c("Alto", "Bajo", "Medio", "Muy Alto"), col=c("navyblue", "darkred", "yellow", "cyan"), lwd=2, cex=0.8, bty="n", title="Clases")
-legend("bottomleft", legend=paste(round(c(r1_arbol$auc,r2_arbol$auc,r3_arbol$auc,r4_arbol$auc),1), "%"), col=c("navyblue", "darkred", "yellow", "cyan"), lwd=2, cex=0.8, bty="n", title="AUC")
-summary(arbol_podado)
 
-#Código de modelamiento con logit multinomial
-corrplot(cor(cuanti_sinNA),type = c("upper"), method = c("square"),diag = F, addCoef.col = "darkgray",
+legend("bottomright", legend=c("Alto", "Bajo", "Medio", "Muy Alto"), col=c("navyblue", "darkred", "yellow", "cyan"), lwd=2, cex=0.8, bty="n", title="Clases")
+
+legend("bottomleft", legend=paste(round(c(r1_arbol$auc,r2_arbol$auc,r3_arbol$auc,r4_arbol$auc),1), "%"), col=c("navyblue", "darkred", "yellow", "cyan"), lwd=2, cex=0.8, bty="n", title="AUC")
+
+```
+
+
+```{r}
+summary(arbol_podado)
+```
+
+
+```{r}
+plotcp(arbol_podado)
+```
+
+```{r}
+printcp(arbol_podado)
+```
+
+#sE VERIFICA MULTICOLINEALIDAD ENTRE LAS VARIABLES
+
+```{r}
+corrplot(cor(cuanti_sinNA[,-1]),type = c("upper"), method = c("square"),diag = T, addCoef.col = "darkgreen",
          number.cex = 0.8, cl.cex = 0.7, tl.cex=0.7, tl.srt=45, mar=c(0.4,0.4,0.4,0.4),
          title = "Correlacion Variables Cuantitativas")
+```
+
+
+
+Entrenamiento con outliers y todas las variables
+
+```{r}
 multinom.fit2 <- multinom(Impacto ~ 
                            Costo.Plan + 
                            Trabajo.Plan +
@@ -348,44 +892,145 @@ multinom.fit2 <- multinom(Impacto ~
                            Parada_NO+
                            Parada_X, 
                          data = bd_tot_train)
+
+
+
+
+```
+
+
+```{r}
+resumen <- summary(multinom.fit2)
+```
+
+
+
+```{r eval=FALSE, warning=FALSE, include=FALSE}
 stepwise <- step(multinom.fit2, direction="backward")
+
+```
+
+```{r eval=FALSE, include=FALSE}
+stepwise$formula[[3]]
+```
+
+```{r}
+head(fitted(multinom.fit2))
+```
+
+
+Aplicacion de validacion cruzada para verificar overfitting
+
+
+```{r}
 accuracy <- data.frame(Acc_Train=numeric(), Acc_Test=numeric())
+
 for (k in 1:4) {
   predict_log_train <- predict(object = multinom.fit2,
                             newdata = d_train[[k]],
                             type = "class")
+
   predict_log_test <- predict(object = multinom.fit2,
                             newdata = d_test[[k]],
                             type = "class")
+
   matriz_test <- confusionMatrix(predict_log_test,d_test[[k]][,6])
   matriz_train <- confusionMatrix(predict_log_train,d_train[[k]][,6])
+
   accuracy[k,1] <- matriz_train$overall[1]
   accuracy[k,2] <- matriz_test$overall[1]
 }
+
+```
+
+```{r}
+accuracy
+```
+
+
+
+
+```{r}
+dim( cvo[particion_cvo[[2]],])
+
+```
+
+
+
+
+```{r}
+names(bd_tot)
+```
+
+```{r}
+t(bd_tot[65,])
+```
+
+
+```{r}
+#Código para predecir 2 vectores de datos partiendo por datos naturales
+
 df_prueba <- bd_tot[1,c(-6,-7)]
 df_prueba <- dummy_cols(df_prueba, select_columns = names(df_prueba[,1:5])) 
+
 faltantes <- setdiff(multinom.fit2$coefnames, names(df_prueba))[-1]
 df_prueba[,faltantes] <- 0
+
 predicc <- predict(object = multinom.fit2,
                             newdata = df_prueba,
                             type = "class")
 predicc
+```
+
+
+
+intervalos de confianza con el error estandar
+
+```{r}
 confint.default(multinom.fit2)
+```
+
+
+
+# Hacer el for para entrenar y validar y verificar overfitting
+
+
+```{r}
+#Predicciones con nuevos datos
+predicciones <- predict(object = multinom.fit2,
+                            newdata = bd_tot_dum[17893:23854,],
+                            type = "class")
+
+confusionMatrix(predicciones, bd_tot_dum[17893:23854,6])
+
+
+
+```
+
+#Evaluacion de medidas de desempeño con validacion cruzada
+
+
+```{r}
 accuracy_desem <- data.frame(Acc_Train=numeric(), Acc_Test=numeric())
 sensibi_desem <- data.frame(Sensitivity_Train=numeric(), Sensitivity_Test=numeric())
 specif_desem <- data.frame(Specificity_Train=numeric(), Specificity_Test=numeric())
 precision_desem <- data.frame(precision_Train=numeric(), precision_Test=numeric())
+
 for (k in 1:4) {
   predict_log_train <- predict(object = multinom.fit2,
                             newdata = d_train[[k]],
                             type = "class")
+
   predict_log_test <- predict(object = multinom.fit2,
                             newdata = d_test[[k]],
                             type = "class")
+
   matriz_test <- confusionMatrix(predict_log_test,d_test[[k]][,6])
   matriz_train <- confusionMatrix(predict_log_train,d_train[[k]][,6])
+
   accuracy_desem[k,1] <- matriz_train$overall[1]
   accuracy_desem[k,2] <- matriz_test$overall[1]
+  
   Atr <-  matriz_train$table[1,1]
   Btr <-  matriz_train$table[1,2]
   Ctr <-  matriz_train$table[2,1]
@@ -393,6 +1038,7 @@ for (k in 1:4) {
   sensibi_desem[k,1] <- Atr/(Atr+Ctr)
   specif_desem[k,1] <- Dtr/(Btr+Dtr)
   precision_desem[k,1] <- Atr/(Atr+Btr)
+  
   Ate <-  matriz_test$table[1,1]
   Bte <-  matriz_test$table[1,2]
   Cte <-  matriz_test$table[2,1]
@@ -401,12 +1047,29 @@ for (k in 1:4) {
   specif_desem[k,2] <- Dte/(Bte+Dte)
   precision_desem[k,2] <- Ate/(Ate+Bte)
 }
+
+```
+
+
+#Genrar ROC
+
+```{r}
 predicciones_prob <- data.frame(predict(object = multinom.fit2,
                             newdata = rbind(d_test[[1]],d_test[[2]],d_test[[3]],d_test[[4]]),
                             type = "prob"))
 tipo_roc <- multiclass.roc(rbind(d_test[[1]],d_test[[2]],d_test[[3]],d_test[[4]])[,6], predicciones_prob)
+
+```
+
+
+
+
+
+
+```{r}
 d_test_unido <- rbind(d_test[[1]],d_test[[2]],d_test[[3]],d_test[[4]])
 obj <- d_test_unido[,6]
+
 predicciones_prob$obj <- obj
 r1 <- roc(predicciones_prob$obj,predicciones_prob[,1],  percent=TRUE, ci=TRUE)
 r2 <- roc(predicciones_prob$obj,predicciones_prob[,2],  percent=TRUE, ci=TRUE)
@@ -421,6 +1084,7 @@ plot(r1,
      auc.polygon.col="gray90",
      identity=F, 
      grid=T)
+
 plot(r2, 
      col="darkred",
      auc.polygon=T,
@@ -429,6 +1093,7 @@ plot(r2,
      identity=F, 
      grid=T,
      add=T)
+
 plot(r3, 
      col="yellow",
      auc.polygon=T,
@@ -437,6 +1102,7 @@ plot(r3,
      identity=F, 
      grid=T,
      add=T)
+
 plot(r4, 
      col="cyan",
      auc.polygon=T,
@@ -445,12 +1111,60 @@ plot(r4,
      identity=F, 
      grid=T,
      add=T)
+
 legend("bottomright", legend=c("Alto", "Bajo", "Medio", "Muy Alto"), col=c("navyblue", "darkred", "yellow", "cyan"), lwd=2, cex=0.8, bty="n", title="Clases")
+
 legend("bottomleft", legend=paste(round(c(r1$auc,r2$auc,r3$auc,r4$auc),1), "%"), col=c("navyblue", "darkred", "yellow", "cyan"), lwd=2, cex=0.8, bty="n", title="AUC")
 
-#Código para probar los modelos
-t(d_test_arbol[[3]][40,])
-predict(object = arbol_podado, newdata = d_test_arbol[[3]][40,], type = "class")
-t(d_test[[3]][40,])
-predict(object = multinom_fit2, newdata = d_test[[3]][40,], type = "class")
+```
 
+
+```{r}
+t(d_test_arbol[[3]][40,])
+```
+
+
+
+```{r}
+predict(object = arbol_podado, newdata = d_test_arbol[[3]][40,], type = "class")
+```
+
+
+con esta linea se pueden hacer predicciones 
+predict(object = arbol_podado, newdata = test4[40,], type = "class")
+
+
+```{r}
+xx <- table(bd_tot$Impacto)
+
+barplot(xx)
+```
+
+
+```{r}
+a <- table(d_train[[1]]$Impacto)
+b <- table(d_train[[2]]$Impacto)
+c <- table(d_train[[3]]$Impacto)
+d <- table(d_train[[4]]$Impacto)
+
+par(mfrow=c(2,2))
+
+barplot(a)
+barplot(b)
+barplot(c)
+barplot(d)
+```
+
+```{r}
+a <- table(d_test[[1]]$Impacto)
+b <- table(d_test[[2]]$Impacto)
+c <- table(d_test[[3]]$Impacto)
+d <- table(d_test[[4]]$Impacto)
+
+par(mfrow=c(2,2))
+
+barplot(a)
+barplot(b)
+barplot(c)
+barplot(d)
+```
